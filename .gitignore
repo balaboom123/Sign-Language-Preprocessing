@@ -163,6 +163,20 @@ cython_debug/
 # Claude
 .claude/
 
-# data
-dataset
+# ============================================================================
+# ASL Dataset Preprocessing - Project-Specific Ignores
+# ============================================================================
+
+# Dataset directories (ignore content, keep structure)
+dataset/
+
+# Model checkpoints (large files, download separately)
+models/checkpoints/*.pth
+
+# Test notebooks and temporary scripts
+test.py
+
+# Temporary files
+*.tmp
+.DS_Store
 
