@@ -4,41 +4,38 @@ import json
 import re
 import numpy as np
 import pandas as pd
-
+import ftfy
 import conf as c  # Keeping original conf import name
 
 
 def normalize_text(text):
     """
-    Normalizes text by replacing Unicode characters, removing non-ASCII characters,
-    bracketed content, and standardizing whitespace.
+    Normalizes text by primarily fixing Unicode issues with ftfy and then
+    performing minimal, non-semantic cleaning to align with YouTube-ASL paper's spirit.
+
+    This function aims to:
+    1. Correct mojibake and other Unicode encoding errors (ftfy).
+    2. Standardize whitespace (remove extra spaces, newlines).
+    3. Remove bracketed descriptive content (e.g., [Laughter]).
+    4. Remove non-ASCII characters that are not part of standard English text,
+       assuming the target is English captions for ASL.
+
+    It explicitly AVOIDS:
+    - Lowercasing (as per the paper's statement).
+    - Removing punctuation (beyond bracketed content).
+    - Any other semantic normalization (stemming, lemmatization, stop words).
 
     Args:
-        text (str): Input text to be normalized
+        text (str): Input text to be normalized.
 
     Returns:
-        str: Cleaned and normalized text in lowercase
+        str: Cleaned and corrected text.
     """
-    unicode_mappings = {
-        "\u201c": '"',
-        "\u201d": '"',
-        "\u2014": "-",
-        "\u2018": "'",
-        "\u2019": "'",
-        "\u2026": "...",
-        "\n": " ",
-        "\r": " ",
-    }
-
-    # Replace Unicode characters with ASCII equivalents
-    pattern = re.compile("|".join(map(re.escape, unicode_mappings)))
-    text = pattern.sub(lambda match: unicode_mappings[match.group()], text)
-
-    # Clean text using regex patterns
-    text = re.sub(r"[^\x00-\x7F]+", "", text)  # Remove non-ASCII
-    text = re.sub(r"\[.*?\]", "", text)  # Remove bracketed content
-    text = re.sub(r"\s+", " ", text)  # Standardize whitespace
-
+    text = ftfy.fix_text(text)
+    text = text.replace("\n", " ").replace("\r", " ")
+    text = re.sub(r"\[.*?\]", "", text)
+    text = re.sub(r"[^\x00-\x7F]+", "", text)
+    text = re.sub(r"\s+", " ", text)
     return text.strip()
 
 

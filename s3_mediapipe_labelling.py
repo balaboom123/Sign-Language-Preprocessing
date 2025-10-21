@@ -34,7 +34,7 @@ def validate_video_file(video_path: str) -> bool:
     """
 	if not os.path.exists(video_path):
 		return False
-	
+
 	try:
 		cap = cv2.VideoCapture(video_path)
 		is_valid = cap.isOpened()
@@ -42,6 +42,53 @@ def validate_video_file(video_path: str) -> bool:
 		return is_valid
 	except Exception:
 		return False
+
+
+def _get_video_fps(video_path: str) -> float:
+	"""
+    Return video FPS (float). Returns 0.0 if FPS cannot be obtained.
+    """
+	try:
+		cap = cv2.VideoCapture(video_path)
+		if not cap.isOpened():
+			return 0.0
+		fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+		cap.release()
+		return float(fps)
+	except Exception:
+		return 0.0
+
+
+class FPSSampler:
+	"""
+    Two sampling strategies:
+      1) reduce mode (priority): Downsample source fps to target fps
+         (uses accumulation error method for non-integer ratios, solves 30->24 etc.)
+      2) skip mode: Sample every Nth frame.
+    """
+	def __init__(self, src_fps: float, reduce_to: float | None, frame_skip_by: int):
+		self.mode = 'reduce' if (reduce_to is not None and src_fps > 0) else 'skip'
+		if self.mode == 'reduce':
+			# Only downsample: if target >= src, sample every frame (equivalent to no reduction)
+			self.target = min(reduce_to, src_fps)
+			# Accumulation error method (Bresenham-like): accumulate r=target/src per frame,
+			# when acc>=1, sample and acc-=1
+			self.r = self.target / max(src_fps, 1e-6)
+			self.acc = 0.0
+		else:
+			self.n = max(int(frame_skip_by), 1)
+			self.count = 0
+
+	def take(self) -> bool:
+		if self.mode == 'reduce':
+			self.acc += self.r
+			if self.acc >= 1.0:
+				self.acc -= 1.0
+				return True
+			return False
+		take_now = (self.count % self.n) == 0
+		self.count += 1
+		return take_now
 
 
 def process_mediapipe_detection(image, model):
@@ -100,9 +147,10 @@ def process_video_segment(video_path: str, start_time: float, end_time: float, o
 			logger.error(f"Error opening video: {video_path}")
 			return
 
-		# Determine frame skip rate based on video FPS
-		fps = cap.get(cv2.CAP_PROP_FPS)
-		frame_skip = 1 if fps <= 15 else c.FRAME_SKIP
+		# FPS & create sampler
+		fps = cap.get(cv2.CAP_PROP_FPS) or 0.0
+		target_fps = None if getattr(c, "REDUCE_FPS_TO", None) is None else float(c.REDUCE_FPS_TO)
+		sampler = FPSSampler(src_fps=fps, reduce_to=target_fps, frame_skip_by=c.FRAME_SKIP)
 
 		# Calculate frame ranges
 		start_frame, end_frame = int(start_time * fps), int(end_time * fps)
@@ -124,7 +172,7 @@ def process_video_segment(video_path: str, start_time: float, end_time: float, o
 			if not ret:
 				break
 
-			if (current_frame - start_frame) % frame_skip == 0:
+			if sampler.take():
 				results = process_mediapipe_detection(frame, holistic)
 				landmark_sequences.append(extract_landmark_coordinates(results))
 
@@ -206,6 +254,9 @@ def main():
 	skipped_due_to_invalid_video = 0
 	skipped_due_to_existing_file = 0
 	skipped_due_to_duration = 0
+	skipped_due_to_fps_range = 0
+	skipped_due_to_too_short = 0
+	video_fps_cache = {}
 
 	processing_tasks = []
 	for _, row in timestamp_data.iterrows():
@@ -220,23 +271,36 @@ def main():
 		if sentence_name in processed_files:
 			skipped_due_to_existing_file += 1
 			continue
-		
-		# Skip if duration is too long
-		if end - start > 60:
+
+		# Segment duration limits: 200ms <= duration <= 60 seconds
+		seg_dur = float(end - start)
+		if seg_dur < 0.2:
+			skipped_due_to_too_short += 1
+			continue
+		if seg_dur > 60.0:
 			skipped_due_to_duration += 1
 			continue
-		
+
 		# Validate video file (use cache to avoid repeated checks)
 		if video_path not in video_validation_cache:
 			video_validation_cache[video_path] = validate_video_file(video_path)
 			if not video_validation_cache[video_path]:
 				invalid_videos.add(video_name)
 				logger.warning(f"Invalid or missing video file: {video_path}")
-		
+
 		if not video_validation_cache[video_path]:
 			skipped_due_to_invalid_video += 1
 			continue
-		
+
+		# Video FPS filtering
+		if video_path not in video_fps_cache:
+			video_fps_cache[video_path] = _get_video_fps(video_path)
+		vfps = video_fps_cache[video_path]
+		min_fps, max_fps = c.ACCEPT_VIDEO_FPS_WITHIN
+		if vfps <= 0.0 or vfps < float(min_fps) or vfps > float(max_fps):
+			skipped_due_to_fps_range += 1
+			continue
+
 		processing_tasks.append((video_path, start, end, output_path))
 
 	# Log summary of skipped tasks
@@ -244,6 +308,8 @@ def main():
 	logger.info(f"  - Tasks to process: {len(processing_tasks)}")
 	logger.info(f"  - Skipped (existing files): {skipped_due_to_existing_file}")
 	logger.info(f"  - Skipped (duration > 60s): {skipped_due_to_duration}")
+	logger.info(f"  - Skipped (duration < 0.2s): {skipped_due_to_too_short}")
+	logger.info(f"  - Skipped (fps out of {c.ACCEPT_VIDEO_FPS_WITHIN}): {skipped_due_to_fps_range}")
 	logger.info(f"  - Skipped (invalid videos): {skipped_due_to_invalid_video}")
 	if invalid_videos:
 		logger.warning(f"Invalid video files found: {', '.join(sorted(invalid_videos))}")
