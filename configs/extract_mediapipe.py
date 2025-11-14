@@ -44,13 +44,7 @@ MAX_WORKERS = 4
 
 # Hand landmarks: All 21 keypoints per hand (wrist, palm, fingers)
 HAND_IDX = list(range(21))
-
-# Pose landmarks: Key upper body points for ASL recognition
-# Indices correspond to: shoulders, elbows, hips
 POSE_IDX = [11, 12, 13, 14, 23, 24]
-
-# Face landmarks: Selected facial features for expressions and mouth shapes
-# Total: 37 keypoints covering face contour, eyes, eyebrows, nose, and mouth
 FACE_IDX = [
     # Face contour and key points
     0, 4, 13, 14, 17, 33, 37, 39, 46, 52, 55, 61, 64, 81, 82, 93,
@@ -59,6 +53,7 @@ FACE_IDX = [
     294, 311, 323, 362, 386, 397, 468, 473
 ]
 
-# Total output dimension: 255 features
-# = 6 pose × 3 coords + 37 face × 3 coords + 21 left_hand × 3 coords + 21 right_hand × 3 coords
-# = 18 + 111 + 63 + 63 = 255
+# Total output dimensions per frame: 340 features (85 keypoints × 4)
+# = 6 pose + 37 face + 21 left_hand + 21 right_hand = 85 keypoints
+# = 85 keypoints × [x, y, z, visibility] = 340 features
+# Note: Reduction to 255 (85 × 3) happens in Step 4 after normalization

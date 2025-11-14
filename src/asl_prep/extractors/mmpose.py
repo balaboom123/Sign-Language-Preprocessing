@@ -10,6 +10,11 @@ from mmdet.apis import inference_detector
 from .base import LandmarkExtractor
 
 
+class MultiPersonDetected(Exception):
+    """Raised when more than one person is detected in a frame."""
+    pass
+
+
 class MMPoseExtractor(LandmarkExtractor):
     """
     Extracts 3D pose landmarks using MMPose RTMPose3D.
@@ -63,22 +68,24 @@ class MMPoseExtractor(LandmarkExtractor):
         Pipeline:
         1. Detect person bounding box using RTMDet
         2. Extract 3D pose using RTMPose3D
-        3. Pack keypoints: [x_norm, y_norm, z_rebased, visible (optional)]
+        3. Pack keypoints: [x_norm, y_norm, z_raw, visible]
 
         Args:
             frame: Input video frame (BGR format)
 
         Returns:
-            Flattened array of landmarks:
-            - If add_visible=True: shape (num_keypoints * 4,)
-            - If add_visible=False: shape (num_keypoints * 3,)
+            Array of landmarks with shape (num_keypoints, 4):
+            - Each keypoint: [x, y, z, visibility]
+            - x, y normalized to [0, 1]
+            - z uses raw values from pose estimator
             Returns None if no person detected or extraction fails
+            Raises MultiPersonDetected if multiple persons detected
 
         Examples:
             >>> frame = cv2.imread("image.jpg")
             >>> landmarks = extractor.process_frame(frame)
             >>> landmarks.shape
-            (340,)  # 85 keypoints * 4 (x, y, z, visible)
+            (85, 4)  # 85 keypoints × [x, y, z, visibility]
         """
         # Person detection
         det_result = inference_detector(self.detector, frame)
@@ -94,6 +101,12 @@ class MMPoseExtractor(LandmarkExtractor):
         # No person detected
         if len(bboxes) == 0:
             return None
+
+        # More than one person detected: mark this segment as invalid
+        if len(bboxes) > 1:
+            raise MultiPersonDetected(
+                f"Detected {len(bboxes)} persons with score > {self.bbox_threshold}"
+            )
 
         # 3D Pose estimation
         pose_est_results = inference_topdown(self.pose_estimator, frame, bboxes)
@@ -142,11 +155,11 @@ class MMPoseExtractor(LandmarkExtractor):
         """
         Extract and pack keypoints from 3D pose estimation results.
 
-        Returns flattened array where:
+        Returns array with shape (num_keypoints, 4) where:
         - First person only (instance_index=0)
         - Filtered by self.keypoint_indices
-        - x,y normalized to [0,1], z rebased to shoulder reference
-        - Optional visibility scores
+        - x,y normalized to [0,1], z uses raw values from pose estimator
+        - visibility scores included
 
         Args:
             pred_3d_instances: Predicted 3D pose instances from MMPose
@@ -155,7 +168,8 @@ class MMPoseExtractor(LandmarkExtractor):
             instance_index: Which person instance to extract (default: 0)
 
         Returns:
-            Flattened numpy array of keypoints or None if extraction fails
+            Numpy array of shape (num_keypoints, 4) or None if extraction fails
+            Each row: [x_norm, y_norm, z_raw, visibility]
         """
         if pred_3d_instances is None:
             return None
@@ -187,36 +201,29 @@ class MMPoseExtractor(LandmarkExtractor):
         x_norm = xy[..., 0] / float(img_w)
         y_norm = xy[..., 1] / float(img_h)
 
-        # z rebase using average of keypoints 6 and 7 (shoulders in COCO-WholeBody)
+        # Use raw z from the pose estimator; do not apply custom offsets
         z = xyz[..., 2]
-        if z.shape[0] > 7:  # make sure idx 6 & 7 exist
-            z_ref = 0.5 * (z[6] + z[7])
-            z = z - z_ref
 
-        if self.add_visible:
-            # Get visibility scores
-            kpt_scores = getattr(pred_3d_instances, 'keypoint_scores', None)
-            if kpt_scores is not None:
-                kpt_scores = self._to_numpy(kpt_scores)
-                # Handle different dimensions
-                if kpt_scores.ndim == 2:  # (N, K)
-                    visible = kpt_scores[instance_index]
-                elif kpt_scores.ndim == 3:  # (N, K, 1)
-                    visible = kpt_scores[instance_index, :, 0]
-                else:
-                    visible = np.ones(len(self.keypoint_indices), dtype=np.float32)
-
-                # Filter by keypoint indices
-                visible = visible[self.keypoint_indices]
+        # Get visibility scores (always include, ignore add_visible parameter)
+        kpt_scores = getattr(pred_3d_instances, 'keypoint_scores', None)
+        if kpt_scores is not None:
+            kpt_scores = self._to_numpy(kpt_scores)
+            # Handle different dimensions
+            if kpt_scores.ndim == 2:  # (N, K)
+                visible = kpt_scores[instance_index]
+            elif kpt_scores.ndim == 3:  # (N, K, 1)
+                visible = kpt_scores[instance_index, :, 0]
             else:
-                # Default to all visible if scores not available
                 visible = np.ones(len(self.keypoint_indices), dtype=np.float32)
 
-            # Stack -> (NUM_KEYPOINTS, 4), then flatten
-            out = np.stack([x_norm, y_norm, z, visible], axis=-1).flatten().astype(np.float32)
+            # Filter by keypoint indices
+            visible = visible[self.keypoint_indices]
         else:
-            # Stack -> (NUM_KEYPOINTS, 3), then flatten
-            out = np.stack([x_norm, y_norm, z], axis=-1).flatten().astype(np.float32)
+            # Default to all visible if scores not available
+            visible = np.ones(len(self.keypoint_indices), dtype=np.float32)
+
+        # Stack -> (NUM_KEYPOINTS, 4), do NOT flatten
+        out = np.stack([x_norm, y_norm, z, visible], axis=-1).astype(np.float32)
 
         return out
 

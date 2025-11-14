@@ -11,44 +11,38 @@ import pandas as pd
 
 def normalize_text(text: str) -> str:
     """
-    Normalize text by fixing Unicode issues and performing minimal cleaning.
+    Keep semantic content; only fix mojibake and whitespace.
+    Do NOT remove non-ASCII characters or bracketed content.
 
-    This function aims to:
-    1. Correct mojibake and other Unicode encoding errors (ftfy)
-    2. Standardize whitespace (remove extra spaces, newlines)
-    3. Remove bracketed descriptive content (e.g., [Laughter])
-    4. Remove non-ASCII characters not part of standard English text
+    This function:
+    1. Corrects mojibake and other Unicode encoding errors (ftfy)
+    2. Normalizes whitespace (newlines to spaces, collapse multiple spaces)
 
-    It explicitly AVOIDS:
-    - Lowercasing (preserves original case)
-    - Removing punctuation (beyond bracketed content)
-    - Semantic normalization (stemming, lemmatization, stop words)
+    It explicitly PRESERVES:
+    - Original case (no lowercasing)
+    - Punctuation
+    - Non-ASCII characters (for multilingual content)
+    - Bracketed content (may contain semantic information)
 
     Args:
         text: Input text to be normalized
 
     Returns:
-        Cleaned and corrected text
+        Text with fixed encoding and normalized whitespace
 
     Examples:
-        >>> normalize_text("Hello  World\\n[Laughter]")
+        >>> normalize_text("Hello  World\\n")
         'Hello World'
         >>> normalize_text("CafÃ©")  # mojibake
         'Café'
     """
-    # Fix Unicode encoding errors
+    # Fix mojibake and ASCII issues
     text = ftfy.fix_text(text)
 
-    # Replace newlines and carriage returns with spaces
+    # Normalize newlines to spaces
     text = text.replace("\n", " ").replace("\r", " ")
 
-    # Remove bracketed content like [Laughter], [Music], etc.
-    text = re.sub(r"\[.*?\]", "", text)
-
-    # Remove non-ASCII characters
-    text = re.sub(r"[^\x00-\x7F]+", "", text)
-
-    # Collapse multiple spaces into single space
+    # Collapse multiple spaces
     text = re.sub(r"\s+", " ", text)
 
     return text.strip()

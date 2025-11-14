@@ -20,9 +20,14 @@ Configuration:
     - POSE_IDX, FACE_IDX, HAND_IDX: Landmark indices to extract
 
 Output Format:
-    NumPy arrays (.npy) with shape (T, 255) where:
+    NumPy arrays (.npy) with shape (T, 85, 4) where:
     - T: Number of frames
-    - 255: Flattened landmarks (6 pose + 37 face + 21 left_hand + 21 right_hand) × 3 coords
+    - 85: Total keypoints (6 pose + 37 face + 21 left_hand + 21 right_hand)
+    - 4: [x, y, z, visibility] per keypoint
+
+Note:
+    This is the raw landmark extraction. Normalization and visibility masking
+    are applied in Step 4 (scripts/4_reduction_normalization.py)
 """
 import os
 import sys
@@ -96,6 +101,11 @@ def process_video_segment(
         landmark_sequences = []
         current_frame = start_frame
 
+        # Number of landmarks: pose + face + left hand + right hand
+        num_landmarks = (
+            len(cfg.POSE_IDX) + len(cfg.FACE_IDX) + 2 * len(cfg.HAND_IDX)
+        )
+
         while current_frame <= end_frame:
             ret, frame = cap.read()
             if not ret:
@@ -104,8 +114,14 @@ def process_video_segment(
             # Use sampler to decide whether to process this frame
             if sampler.take():
                 landmarks = extractor.process_frame(frame)
-                if landmarks is not None:
-                    landmark_sequences.append(landmarks)
+
+                # If no landmarks are detected, append a placeholder
+                if landmarks is None:
+                    landmarks = np.zeros(
+                        (num_landmarks, 4), dtype=np.float32
+                    )
+
+                landmark_sequences.append(landmarks)
 
             current_frame += 1
 

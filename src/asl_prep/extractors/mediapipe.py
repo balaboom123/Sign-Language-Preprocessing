@@ -67,15 +67,17 @@ class MediaPipeExtractor(LandmarkExtractor):
             frame: Input video frame (BGR format)
 
         Returns:
-            Flattened array of landmarks: [pose, face, left_hand, right_hand]
-            Shape: (num_pose*3 + num_face*3 + num_hand*3 + num_hand*3,)
+            Array of landmarks with shape (num_keypoints, 4):
+            - Concatenated as [pose, face, left_hand, right_hand]
+            - Each keypoint: [x, y, z, visibility]
+            Shape: (85, 4) = 6 pose + 37 face + 21 left_hand + 21 right_hand
             Returns None if MediaPipe fails to process the frame
 
         Examples:
             >>> frame = cv2.imread("image.jpg")
             >>> landmarks = extractor.process_frame(frame)
             >>> landmarks.shape
-            (255,)  # 6*3 + 37*3 + 21*3 + 21*3 = 255
+            (85, 4)  # 85 keypoints × [x, y, z, visibility]
         """
         # Convert BGR to RGB for MediaPipe
         image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -83,7 +85,7 @@ class MediaPipeExtractor(LandmarkExtractor):
         # Process with MediaPipe
         results = self.holistic.process(image_rgb)
 
-        # Extract landmarks
+        # Extract landmarks with visibility
         pose_landmarks = self._convert_landmarks_to_array(
             getattr(results.pose_landmarks, "landmark", None), self.pose_idx
         )
@@ -97,15 +99,15 @@ class MediaPipeExtractor(LandmarkExtractor):
             getattr(results.right_hand_landmarks, "landmark", None), self.hand_idx
         )
 
-        # Concatenate all landmarks into a single flattened array
+        # Concatenate all landmarks: shape (num_keypoints, 4)
         landmark_array = np.concatenate([
-            pose_landmarks.flatten(),
-            face_landmarks.flatten(),
-            left_hand_landmarks.flatten(),
-            right_hand_landmarks.flatten(),
-        ])
+            pose_landmarks,
+            face_landmarks,
+            left_hand_landmarks,
+            right_hand_landmarks,
+        ], axis=0)
 
-        return landmark_array
+        return landmark_array.astype(np.float32)
 
     def _convert_landmarks_to_array(
         self,
@@ -113,28 +115,37 @@ class MediaPipeExtractor(LandmarkExtractor):
         indices: List[int]
     ) -> np.ndarray:
         """
-        Convert MediaPipe landmarks to numpy array.
+        Convert MediaPipe landmarks to numpy array with visibility.
 
         Args:
             landmarks: MediaPipe landmark list (or None if not detected)
             indices: Indices of landmarks to extract
 
         Returns:
-            Numpy array of shape (len(indices), 3) with [x, y, z] coordinates
+            Numpy array of shape (len(indices), 4) with [x, y, z, visibility]
             Returns zeros if landmarks is None
+
+        Note:
+            - Pose landmarks have visibility attribute
+            - Hand/face landmarks may not have visibility, defaulting to 1.0
 
         Examples:
             >>> landmarks = results.pose_landmarks.landmark
             >>> pose_array = self._convert_landmarks_to_array(landmarks, [11, 12])
             >>> pose_array.shape
-            (2, 3)
+            (2, 4)  # [[x, y, z, visibility], ...]
         """
         if landmarks:
-            return np.array(
-                [[landmarks[i].x, landmarks[i].y, landmarks[i].z] for i in indices]
-            )
+            out = []
+            for i in indices:
+                lm = landmarks[i]
+                # MediaPipe has lm.visibility for pose; hands/face may not have it
+                vis = getattr(lm, "visibility", 1.0)  # Default visible if no attribute
+                out.append([lm.x, lm.y, lm.z, vis])
+            return np.array(out, dtype=np.float32)
         else:
-            return np.zeros((len(indices), 3))
+            # No detection: fill with zeros (will be handled in stage 4)
+            return np.zeros((len(indices), 4), dtype=np.float32)
 
     def close(self):
         """

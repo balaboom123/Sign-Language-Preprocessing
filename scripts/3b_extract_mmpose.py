@@ -25,10 +25,14 @@ Configuration:
     - MAX_WORKERS: Number of parallel worker processes
 
 Output Format:
-    NumPy arrays (.npy) with shape:
-    - (T, 340) if ADD_VISIBLE=True: 85 keypoints × (x, y, z, visible)
-    - (T, 255) if ADD_VISIBLE=False: 85 keypoints × (x, y, z)
-    where T is the number of frames
+    NumPy arrays (.npy) with shape (T, 85, 4) where:
+    - T: Number of frames
+    - 85: Total keypoints (COCO-WholeBody subset)
+    - 4: [x, y, z, visibility] per keypoint
+
+Note:
+    This is the raw landmark extraction. Normalization and visibility masking
+    are applied in Step 4 (scripts/4_reduction_normalization.py)
 """
 import os
 import sys
@@ -53,7 +57,7 @@ import configs.extract_mmpose as cfg
 from src.asl_prep.pipeline.processor import read_manifest_csv, build_processing_tasks
 from src.asl_prep.common.files import get_video_filenames
 from src.asl_prep.common.video import FPSSampler
-from src.asl_prep.extractors.mmpose import MMPoseExtractor
+from src.asl_prep.extractors.mmpose import MMPoseExtractor, MultiPersonDetected
 
 try:
     from mmdet.apis import init_detector
@@ -163,6 +167,12 @@ def process_video_segment(
         landmark_sequences = []
         current_frame = start_frame
 
+        # Track whether multiple persons are detected in this segment
+        multi_person = False
+
+        # Number of landmarks equals the number of selected keypoints
+        num_landmarks = len(cfg.COCO_WHOLEBODY_IDX)
+
         while current_frame <= end_frame:
             ret, frame = cap.read()
             if not ret:
@@ -170,14 +180,33 @@ def process_video_segment(
 
             # Use sampler to decide whether to process this frame
             if sampler.take():
-                landmarks = extractor.process_frame(frame)
-                if landmarks is not None:
-                    landmark_sequences.append(landmarks)
+                try:
+                    landmarks = extractor.process_frame(frame)
+                except MultiPersonDetected as e:
+                    logger.warning(
+                        f"Multiple persons detected in segment "
+                        f"{video_path} [{start_time:.3f}, {end_time:.3f}] - {e}. "
+                        f"Skipping this segment."
+                    )
+                    multi_person = True
+                    break
+
+                # If no person is detected in this frame, append a placeholder
+                if landmarks is None:
+                    landmarks = np.zeros(
+                        (num_landmarks, 4), dtype=np.float32
+                    )
+
+                landmark_sequences.append(landmarks)
 
             current_frame += 1
 
-        # Save landmarks if valid data exists
-        if landmark_sequences:
+        if multi_person:
+            logger.info(
+                f"Segment skipped due to multiple persons: "
+                f"{video_path} [{start_time:.3f}, {end_time:.3f}]"
+            )
+        elif landmark_sequences:
             landmark_array = np.array(landmark_sequences)
             if landmark_array.size > 0 and np.any(landmark_array):
                 os.makedirs(os.path.dirname(output_file), exist_ok=True)
