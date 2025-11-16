@@ -26,6 +26,24 @@ SKIP_EXISTING = True
 MAX_WORKERS = 4
 
 # =============================================================================
+# KEYPOINT REDUCTION CONFIGURATION
+# =============================================================================
+
+# Whether to apply keypoint reduction during normalization (Step 4)
+# True:  Reduce input keypoints to specified indices (e.g., 133 → 85)
+#        Useful when Step 3 outputs all keypoints (REDUCTION=False in extraction)
+# False: Keep all keypoints from input (no reduction)
+#        Use when Step 3 already applied reduction (REDUCTION=True in extraction)
+REDUCTION = True
+
+# Keypoint indices to select when REDUCTION=True
+# None (default): Auto-select based on input keypoint count
+#   - For 133 keypoints (MMPose): Use COCO-WholeBody 85-keypoint subset
+#   - For 532 keypoints (MediaPipe): Use ASL-optimized 85-keypoint subset
+# List[int]: Custom indices to select (e.g., list(range(85)))
+KEYPOINT_INDICES = None
+
+# =============================================================================
 # VISIBILITY MASKING CONFIGURATION
 # =============================================================================
 
@@ -38,7 +56,7 @@ UNVISIBLE_FRAME = -999.0
 # Enable/disable landmark-level masking
 # When True: individual landmarks with low visibility are set to UNVISIBLE_LANDMARK
 # Requires VISIBILITY_THRESHOLD
-MASK_LANDMARK_LEVEL = True
+MASK_LANDMARK_LEVEL = False
 UNVISIBLE_LANDMARK = -999.0
 
 # Visibility threshold: landmarks with visibility < this value are masked
@@ -54,9 +72,14 @@ VISIBILITY_THRESHOLD = 0.3
 # False: Output shape (T, 255) with x, y, z coordinates
 REMOVE_Z = False
 
-# Normalization method: Isotropic unit bounding box scaling
-# Computes single scale factor across x, y, z to preserve aspect ratios
-NORMALIZATION_METHOD = 'minmax'
+# Normalization mode:
+# - "isotropic_3d": Original YouTube-ASL paper (one scale factor over x,y,z)
+#                   Good for MediaPipe Holistic with metric 3D consistency
+# - "xy_isotropic_z_minmax": Recommended for MMPose 3D (default)
+#                            xy: isotropic scaling in image plane
+#                            z:  per-clip min-max scaling for relative depth
+#                            Better for 2D pose + lifted depth without metric scale
+NORMALIZATION_MODE = "xy_isotropic_z_minmax"
 
 # =============================================================================
 # NOTES

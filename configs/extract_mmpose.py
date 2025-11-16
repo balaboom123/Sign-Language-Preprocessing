@@ -35,7 +35,20 @@ ACCEPT_VIDEO_FPS_WITHIN = (24.0, 60.0)  # (min_fps, max_fps)
 MAX_WORKERS = 4
 
 # =============================================================================
+# KEYPOINT REDUCTION CONFIGURATION
+# =============================================================================
+
+# Whether to apply keypoint reduction during extraction (Step 3)
+# True:  Reduce to 85 selected keypoints optimized for ASL
+#        Output shape: (T, 85, 4) with [x, y, z, visibility]
+# False: Keep all COCO-WholeBody keypoints (133 total)
+#        Output shape: (T, 133, 4) with [x, y, z, visibility]
+#        Keypoint reduction deferred to Step 4
+REDUCTION = False
+
+# =============================================================================
 # COCO-WHOLEBODY KEYPOINT SELECTION (85 keypoints total)
+# Only used when REDUCTION=True
 # =============================================================================
 
 # Selected keypoints from COCO-WholeBody format (133 total keypoints)
@@ -57,7 +70,8 @@ COCO_WHOLEBODY_IDX = [
     71, 73, 75, 77, 79, 81, 83, 84, 85, 86, 87, 88, 89, 90,
 ] + list(range(91, 133))  # All hand landmarks (42 points): 21 left + 21 right
 
-# Total: 6 body + 37 face + 42 hands = 85 keypoints
+# Total output (when REDUCTION=True): 6 body + 37 face + 42 hands = 85 keypoints
+# When REDUCTION=False: All 133 COCO-WholeBody keypoints (17 body + 68 face + 42 hands + 6 feet)
 
 # =============================================================================
 # MODEL PATHS (RTMPose3D + RTMDet)

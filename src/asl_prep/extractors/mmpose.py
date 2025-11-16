@@ -30,6 +30,7 @@ class MMPoseExtractor(LandmarkExtractor):
         bbox_threshold: Confidence threshold for person detection
         det_cat_id: Detection category ID for person (default: 0)
         add_visible: Whether to include visibility scores in output
+        apply_reduction: Whether to apply keypoint reduction (True) or keep all 133 keypoints (False)
 
     Examples:
         >>> from mmdet.apis import init_detector
@@ -52,14 +53,17 @@ class MMPoseExtractor(LandmarkExtractor):
         bbox_threshold: float = 0.5,
         det_cat_id: int = 0,
         add_visible: bool = True,
+        apply_reduction: bool = True,
     ):
         """Initialize MMPose extractor with pre-loaded models."""
         self.detector = detector
         self.pose_estimator = pose_estimator
-        self.keypoint_indices = keypoint_indices
+        # If apply_reduction=False, use all 133 keypoints; otherwise use specified indices
+        self.keypoint_indices = keypoint_indices if apply_reduction else list(range(133))
         self.bbox_threshold = bbox_threshold
         self.det_cat_id = det_cat_id
         self.add_visible = add_visible
+        self.apply_reduction = apply_reduction
 
     def process_frame(self, frame: np.ndarray) -> Optional[np.ndarray]:
         """
@@ -78,6 +82,10 @@ class MMPoseExtractor(LandmarkExtractor):
             - Each keypoint: [x, y, z, visibility]
             - x, y normalized to [0, 1]
             - z uses raw values from pose estimator
+            When apply_reduction=True:
+                Shape: (85, 4) - ASL-optimized keypoint subset
+            When apply_reduction=False:
+                Shape: (133, 4) - All COCO-WholeBody keypoints
             Returns None if no person detected or extraction fails
             Raises MultiPersonDetected if multiple persons detected
 
@@ -85,7 +93,8 @@ class MMPoseExtractor(LandmarkExtractor):
             >>> frame = cv2.imread("image.jpg")
             >>> landmarks = extractor.process_frame(frame)
             >>> landmarks.shape
-            (85, 4)  # 85 keypoints × [x, y, z, visibility]
+            (85, 4)  # With reduction: 85 keypoints × [x, y, z, visibility]
+            >>> # or (133, 4) without reduction
         """
         # Person detection
         det_result = inference_detector(self.detector, frame)

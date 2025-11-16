@@ -20,9 +20,14 @@ Configuration:
     - POSE_IDX, FACE_IDX, HAND_IDX: Landmark indices to extract
 
 Output Format:
-    NumPy arrays (.npy) with shape (T, 85, 4) where:
+    NumPy arrays (.npy) with shape depending on REDUCTION config:
+    When REDUCTION=True (default):
+        Shape: (T, 85, 4)
+        85 keypoints: 6 pose + 41 face + 21 left_hand + 21 right_hand
+    When REDUCTION=False:
+        Shape: (T, 543, 4)
+        543 keypoints: All MediaPipe Holistic landmarks
     - T: Number of frames
-    - 85: Total keypoints (6 pose + 37 face + 21 left_hand + 21 right_hand)
     - 4: [x, y, z, visibility] per keypoint
 
 Note:
@@ -95,16 +100,24 @@ def process_video_segment(
         extractor = MediaPipeExtractor(
             pose_idx=cfg.POSE_IDX,
             face_idx=cfg.FACE_IDX,
-            hand_idx=cfg.HAND_IDX
+            hand_idx=cfg.HAND_IDX,
+            min_detection_confidence=0.3,
+            min_tracking_confidence=0.3,
+            apply_reduction=cfg.REDUCTION,
         )
 
         landmark_sequences = []
         current_frame = start_frame
 
-        # Number of landmarks: pose + face + left hand + right hand
-        num_landmarks = (
-            len(cfg.POSE_IDX) + len(cfg.FACE_IDX) + 2 * len(cfg.HAND_IDX)
-        )
+        # Number of landmarks depends on REDUCTION setting
+        if cfg.REDUCTION:
+            # Reduced keypoints: pose + face + left hand + right hand
+            num_landmarks = (
+                len(cfg.POSE_IDX) + len(cfg.FACE_IDX) + 2 * len(cfg.HAND_IDX)
+            )
+        else:
+            # All MediaPipe Holistic keypoints: 33 pose + 468 face + 21*2 hands
+            num_landmarks = 543  # Total MediaPipe Holistic landmarks
 
         while current_frame <= end_frame:
             ret, frame = cap.read()
@@ -198,6 +211,11 @@ def main():
 
     logger.info(f"Found {len(video_files)} video files")
     logger.info(f"Configuration:")
+    logger.info(f"  - Keypoint reduction: {cfg.REDUCTION}")
+    if cfg.REDUCTION:
+        logger.info(f"  - Output keypoints: 85 (ASL-optimized subset)")
+    else:
+        logger.info(f"  - Output keypoints: 543 (all MediaPipe Holistic landmarks)")
     logger.info(f"  - FPS reduction: {cfg.REDUCE_FPS_TO}")
     logger.info(f"  - Frame skip: {cfg.FRAME_SKIP}")
     logger.info(f"  - FPS range filter: {cfg.ACCEPT_VIDEO_FPS_WITHIN}")

@@ -39,7 +39,20 @@ ACCEPT_VIDEO_FPS_WITHIN = (24.0, 60.0)  # (min_fps, max_fps)
 MAX_WORKERS = 4
 
 # =============================================================================
+# KEYPOINT REDUCTION CONFIGURATION
+# =============================================================================
+
+# Whether to apply keypoint reduction during extraction (Step 3)
+# True:  Reduce to 85 selected keypoints (6 pose + 41 face + 42 hands)
+#        Output shape: (T, 85, 4) with [x, y, z, visibility]
+# False: Keep all MediaPipe Holistic landmarks (532 total keypoints)
+#        Output shape: (T, 532, 4) with [x, y, z, visibility]
+#        Keypoint reduction deferred to Step 4
+REDUCTION = True
+
+# =============================================================================
 # MEDIAPIPE LANDMARK INDICES (BlazePose Format)
+# Only used when REDUCTION=True
 # =============================================================================
 
 # Hand landmarks: All 21 keypoints per hand (wrist, palm, fingers)
@@ -53,7 +66,11 @@ FACE_IDX = [
     294, 311, 323, 362, 386, 397, 468, 473
 ]
 
-# Total output dimensions per frame: 340 features (85 keypoints × 4)
-# = 6 pose + 37 face + 21 left_hand + 21 right_hand = 85 keypoints
+# Total output dimensions per frame (when REDUCTION=True):
+# = 6 pose + 41 face + 21 left_hand + 21 right_hand = 85 keypoints
 # = 85 keypoints × [x, y, z, visibility] = 340 features
-# Note: Reduction to 255 (85 × 3) happens in Step 4 after normalization
+# Note: Visibility channel removal (85 × 3 = 255) happens in Step 4 after normalization
+#
+# When REDUCTION=False: 532 keypoints × 4 = 2128 features
+# MediaPipe Holistic provides: 33 pose + 468 face + 21 left_hand + 21 right_hand = 543 total
+# (Note: Actual count may vary based on MediaPipe version)

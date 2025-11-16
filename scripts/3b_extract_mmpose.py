@@ -25,9 +25,14 @@ Configuration:
     - MAX_WORKERS: Number of parallel worker processes
 
 Output Format:
-    NumPy arrays (.npy) with shape (T, 85, 4) where:
+    NumPy arrays (.npy) with shape depending on REDUCTION config:
+    When REDUCTION=True (default):
+        Shape: (T, 85, 4)
+        85 keypoints: ASL-optimized COCO-WholeBody subset
+    When REDUCTION=False:
+        Shape: (T, 133, 4)
+        133 keypoints: All COCO-WholeBody keypoints
     - T: Number of frames
-    - 85: Total keypoints (COCO-WholeBody subset)
     - 4: [x, y, z, visibility] per keypoint
 
 Note:
@@ -162,6 +167,7 @@ def process_video_segment(
             bbox_threshold=cfg.BBOX_THR,
             det_cat_id=cfg.DET_CAT_ID,
             add_visible=cfg.ADD_VISIBLE,
+            apply_reduction=cfg.REDUCTION,
         )
 
         landmark_sequences = []
@@ -170,8 +176,13 @@ def process_video_segment(
         # Track whether multiple persons are detected in this segment
         multi_person = False
 
-        # Number of landmarks equals the number of selected keypoints
-        num_landmarks = len(cfg.COCO_WHOLEBODY_IDX)
+        # Number of landmarks depends on REDUCTION setting
+        if cfg.REDUCTION:
+            # Reduced keypoints: ASL-optimized subset
+            num_landmarks = len(cfg.COCO_WHOLEBODY_IDX)
+        else:
+            # All COCO-WholeBody keypoints
+            num_landmarks = 133
 
         while current_frame <= end_frame:
             ret, frame = cap.read()
@@ -286,6 +297,11 @@ def main():
 
     logger.info(f"Found {len(video_files)} video files")
     logger.info(f"Configuration:")
+    logger.info(f"  - Keypoint reduction: {cfg.REDUCTION}")
+    if cfg.REDUCTION:
+        logger.info(f"  - Output keypoints: 85 (ASL-optimized subset)")
+    else:
+        logger.info(f"  - Output keypoints: 133 (all COCO-WholeBody)")
     logger.info(f"  - FPS reduction: {cfg.REDUCE_FPS_TO}")
     logger.info(f"  - Frame skip: {cfg.FRAME_SKIP}")
     logger.info(f"  - FPS range filter: {cfg.ACCEPT_VIDEO_FPS_WITHIN}")
