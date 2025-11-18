@@ -1,16 +1,12 @@
 # ASL Dataset Preprocessing Pipeline
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
-[![Code style: black](https://img.shields.io/badge/code%20style-modular-black.svg)](https://github.com/psf/black)
-
 A professional, modular pipeline for preprocessing **American Sign Language (ASL)** datasets, supporting both **YouTube-ASL** and **How2Sign** datasets. This project implements the methodology from ["YouTube-ASL: A Large-Scale, Open-Domain American Sign Language-English Parallel Corpus" (Uthus et al., 2023)](https://arxiv.org/abs/2306.15162).
 
 The pipeline handles the complete workflow from video acquisition to landmark extraction, preparing data for ASL translation tasks using **MediaPipe Holistic** and **MMPose RTMPose3D**.
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Features](#-features)
 - [Project Structure](#-project-structure)
@@ -29,20 +25,20 @@ The pipeline handles the complete workflow from video acquisition to landmark ex
 
 ---
 
-## ✨ Features
+## Features
 
-- 🎯 **Modular Architecture** - Clean separation of concerns with reusable components
-- 🔄 **Two Landmark Extractors** - MediaPipe Holistic and MMPose RTMPose3D support
-- 📊 **Dual Dataset Support** - Works with YouTube-ASL and How2Sign datasets
-- ⚡ **Parallel Processing** - Multi-worker support for efficient video processing
-- 🎬 **Smart Frame Sampling** - Configurable FPS reduction and frame skipping
-- 📝 **Comprehensive Logging** - Detailed progress tracking and error reporting
-- 🔧 **Flexible Configuration** - Script-specific config files for easy customization
-- 📦 **Production Ready** - Type hints, docstrings, and error handling throughout
+- **Modular Architecture** - Clean separation of concerns with reusable components
+- **Two Landmark Extractors** - MediaPipe Holistic and MMPose RTMPose3D support
+- **Dual Dataset Support** - Works with YouTube-ASL and How2Sign datasets
+- **Parallel Processing** - Multi-worker support for efficient video processing
+- **Smart Frame Sampling** - Configurable FPS reduction and frame skipping
+- **Comprehensive Logging** - Detailed progress tracking and error reporting
+- **Flexible Configuration** - Script-specific config files for easy customization
+- **Production Ready** - Type hints, docstrings, and error handling throughout
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 ASL-Dataset-Preprocess/
@@ -94,7 +90,7 @@ ASL-Dataset-Preprocess/
 
 ---
 
-## 🔧 Prerequisites
+## Prerequisites
 
 ### System Requirements
 
@@ -103,18 +99,9 @@ ASL-Dataset-Preprocess/
 - **GPU**: CUDA-compatible GPU recommended for MMPose (optional for MediaPipe)
 - **Storage**: ~100GB+ for datasets and models
 
-### Core Dependencies
-
-- **MediaPipe** - Holistic body landmark detection
-- **MMPose** - Advanced 3D pose estimation (optional)
-- **OpenCV** - Video processing
-- **NumPy** - Numerical operations
-- **Pandas** - Data manipulation
-- **yt-dlp** - YouTube video downloading
-
 ---
 
-## 📦 Installation
+## Installation
 
 ### 1. Clone the Repository
 
@@ -131,24 +118,33 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 3. Download MMPose Model Checkpoints (If Using MMPose)
+### 3. Download MMPose and the checkpoints (If Using MMPose)
 
 ```bash
+pip install -U openmim
+mim install mmcv==2.0.1 mmengine==0.10.7 mmdet==3.1.0
+cd ..
+git clone https://github.com/open-mmlab/mmpose.git
+cd mmpose
+pip install -r requirements.txt
+pip install -v -e .
+
+# add mmpose to the pythonpath
+echo 'export PYTHONPATH="/your/path/to/mmpose:$PYTHONPATH"' >> ~/.bashrc
+
 # Create checkpoint directory
-mkdir -p models/checkpoints
+cd path/of/this/project/models/checkpoints
 
 # Download RTMPose3D model (whole-body 3D pose)
-wget https://download.openmmlab.com/mmpose/v1/wholebody_3d_keypoint/rtmw3d/rtmw3d-l_8xb64_cocktail14-384x288-794dbc78_20240626.pth \
-  -O models/checkpoints/rtmw3d-l_8xb64_cocktail14-384x288-794dbc78_20240626.pth
+wget https://download.openmmlab.com/mmpose/v1/wholebody_3d_keypoint/rtmw3d/rtmw3d-l_8xb64_cocktail14-384x288-794dbc78_20240626.pth
 
 # Download RTMDet model (person detection)
-wget https://download.openmmlab.com/mmpose/v1/projects/rtmpose/rtmdet_m_8xb32-100e_coco-obj365-person-235e8209.pth \
-  -O models/checkpoints/rtmdet_m_8xb32-100e_coco-obj365-person-235e8209.pth
+wget https://download.openmmlab.com/mmpose/v1/projects/rtmpose/rtmdet_nano_8xb32-100e_coco-obj365-person-05d8511e.pth
 ```
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### YouTube-ASL Pipeline
 
@@ -185,99 +181,7 @@ python scripts/3b_extract_mmpose.py     # MMPose
 
 ---
 
-## ⚙️ Configuration
-
-Each pipeline script has its own configuration file in `configs/`:
-
-### `configs/download.py` - YouTube Download Settings
-
-```python
-# Video ID source
-VIDEO_ID_FILE = "assets/youtube-asl_youtube_asl_video_ids.txt"
-
-# Download directories
-VIDEO_DIR = "dataset/origin/"
-TRANSCRIPT_DIR = "dataset/transcript/"
-
-# YouTube download settings
-YT_CONFIG = {
-    "format": "worstvideo[height>=720]/bestvideo[height<=480]",
-    "limit_rate": "5M",  # Limit to 5 MB/s
-    # ... more settings
-}
-
-# Supported languages for transcripts
-LANGUAGE = ["en", "ase", "en-US", ...]
-```
-
-### `configs/build_manifest.py` - Transcript Processing
-
-```python
-# Input/Output paths
-VIDEO_ID_FILE = "assets/youtube-asl_youtube_asl_video_ids.txt"
-TRANSCRIPT_DIR = "dataset/transcript/"
-OUTPUT_CSV = "assets/youtube_asl.csv"
-
-# Filtering constraints
-MAX_TEXT_LENGTH = 300  # characters
-MIN_DURATION = 0.2     # seconds
-MAX_DURATION = 60.0    # seconds
-```
-
-### `configs/extract_mediapipe.py` - MediaPipe Extraction
-
-```python
-# Data paths
-CSV_FILE = "dataset/how2sign/how2sign_realigned_val.csv"
-VIDEO_DIR = "dataset/origin/"
-NPY_DIR = "dataset/npy/"
-
-# Frame sampling
-REDUCE_FPS_TO = 24.0  # Target FPS (None to disable)
-FRAME_SKIP = 2        # Skip every Nth frame (when not using REDUCE_FPS_TO)
-ACCEPT_VIDEO_FPS_WITHIN = (24.0, 60.0)  # Valid FPS range
-
-# Processing
-MAX_WORKERS = 4  # Parallel workers
-
-# Landmark selection (from YouTube-ASL paper)
-POSE_IDX = [11, 12, 13, 14, 23, 24]  # Shoulders, elbows, hips
-FACE_IDX = [0, 4, 13, 14, 17, ...]   # 37 facial landmarks
-HAND_IDX = list(range(21))           # All hand landmarks
-```
-
-### `configs/extract_mmpose.py` - MMPose 3D Extraction
-
-```python
-# Data paths
-CSV_FILE = "dataset/how2sign/how2sign_realigned_val.csv"
-VIDEO_DIR = "dataset/origin/"
-NPY_DIR = "dataset/npy/"
-
-# Frame sampling
-REDUCE_FPS_TO = 24.0
-FRAME_SKIP = 2
-ACCEPT_VIDEO_FPS_WITHIN = (24.0, 60.0)
-MAX_WORKERS = 4
-
-# Keypoint selection (85 keypoints from COCO-WholeBody)
-COCO_WHOLEBODY_IDX = [5, 6, 7, 8, 11, 12, ...]
-
-# Model paths
-POSE_MODEL_CHECKPOINT = "models/checkpoints/rtmw3d-l_..."
-DET_MODEL_CHECKPOINT = "models/checkpoints/rtmdet_m_..."
-
-# Output format
-ADD_VISIBLE = True  # Include visibility scores
-
-# Inference parameters
-BBOX_THR = 0.5  # Person detection threshold
-KPT_THR = 0.3   # Keypoint confidence threshold
-```
-
----
-
-## 🔄 Pipeline Stages
+## Pipeline Stages
 
 ### Stage 1: Data Acquisition (`1_download_data.py`)
 
@@ -351,7 +255,7 @@ Extracts 3D pose landmarks using MMPose RTMPose3D.
 
 ---
 
-## 📚 Dataset Information
+## Dataset Information
 
 ### YouTube-ASL Dataset
 
@@ -394,155 +298,10 @@ Extracts 3D pose landmarks using MMPose RTMPose3D.
 
 ---
 
-## 🔬 Advanced Usage
-
-### Custom Landmark Selection
-
-Edit landmark indices in config files to extract different keypoints:
-
-```python
-# configs/extract_mediapipe.py
-
-# Example: Extract only hands (no pose, no face)
-POSE_IDX = []                # Empty - skip pose
-FACE_IDX = []                # Empty - skip face
-HAND_IDX = list(range(21))   # All hand landmarks
-
-# Output will be: 21 left + 21 right = 42 landmarks × 3 coords = 126 features
-```
-
-### Adjust Frame Sampling
-
-Control processing speed vs. temporal resolution:
-
-```python
-# configs/extract_mediapipe.py
-
-# Option 1: Fixed target FPS (recommended)
-REDUCE_FPS_TO = 15.0  # Downsample all videos to 15 FPS
-FRAME_SKIP = 1        # Not used when REDUCE_FPS_TO is set
-
-# Option 2: Skip every Nth frame
-REDUCE_FPS_TO = None  # Disable FPS reduction
-FRAME_SKIP = 3        # Sample every 3rd frame (1/3 rate)
-```
-
-### Parallel Processing Tuning
-
-Adjust worker count based on your hardware:
-
-```python
-# configs/extract_mediapipe.py or extract_mmpose.py
-
-# CPU-bound (MediaPipe)
-MAX_WORKERS = 4  # Typically CPU cores - 1
-
-# GPU-bound (MMPose)
-MAX_WORKERS = 2  # Fewer workers due to GPU memory constraints
-```
-
-### Filter Videos by FPS
-
-Skip videos with unusual frame rates:
-
-```python
-# configs/extract_mediapipe.py
-
-# Only process videos between 24-60 FPS
-ACCEPT_VIDEO_FPS_WITHIN = (24.0, 60.0)
-
-# Accept all frame rates
-ACCEPT_VIDEO_FPS_WITHIN = (1.0, 120.0)
-```
-
----
-
-## 🛠️ Troubleshooting
-
-### Common Issues
-
-**1. Import Error: `cannot import name 'TooManyRequests'`**
-
-Update youtube-transcript-api:
-```bash
-pip install --upgrade youtube-transcript-api
-```
-
-**2. MMPose Model Not Found**
-
-Download model checkpoints (see Installation section) or update paths in `configs/extract_mmpose.py`.
-
-**3. CUDA Out of Memory (MMPose)**
-
-Reduce `MAX_WORKERS` in `configs/extract_mmpose.py`:
-```python
-MAX_WORKERS = 1  # Process one video at a time
-```
-
-**4. Video Download Fails**
-
-Check if video is still available on YouTube. Update yt-dlp:
-```bash
-pip install --upgrade yt-dlp
-```
-
-**5. Slow Processing**
-
-- Enable FPS reduction: Set `REDUCE_FPS_TO = 15.0`
-- Increase `FRAME_SKIP` to sample fewer frames
-- Reduce `MAX_WORKERS` if system is overloaded
-
-### Debug Mode
-
-Enable detailed logging:
-
-```bash
-# Add to scripts before running
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
-
-### Validation
-
-Check output landmark arrays:
-
-```python
-import numpy as np
-
-# Load landmark array
-landmarks = np.load("dataset/npy/video_id-001.npy")
-
-print(f"Shape: {landmarks.shape}")        # (T, 255) or (T, 340)
-print(f"Min: {landmarks.min():.3f}")      # Should be ~-1 to 0
-print(f"Max: {landmarks.max():.3f}")      # Should be ~1 to 2
-print(f"Mean: {landmarks.mean():.3f}")    # Should be ~0 to 1
-print(f"Has NaN: {np.isnan(landmarks).any()}")  # Should be False
-```
-
----
-
-## 📄 License
+## License
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🙏 Acknowledgments
 
-- **YouTube-ASL Team** - For the dataset and methodology
-- **How2Sign Team** - For the How2Sign dataset
-- **MediaPipe Team** - For holistic body landmark detection
-- **MMPose Team** - For advanced 3D pose estimation
-- **OpenMMLab** - For the excellent computer vision framework
-
----
-
-## 📞 Contact & Support
-
-- **Issues**: [GitHub Issues](https://github.com/yourusername/ASL-Dataset-Preprocess/issues)
-- **Documentation**: See `REORGANIZATION_SUMMARY.md` for architecture details
-- **Contributing**: Pull requests welcome!
-
----
-
-**Happy ASL Preprocessing! 🤟**
